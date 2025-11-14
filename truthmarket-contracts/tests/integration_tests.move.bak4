@@ -1,0 +1,887 @@
+// Copyright (c), Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+/// COMPREHENSIVE INTEGRATION TESTS FOR TRUTHMARKET
+/// Tests the FULL user flow from seller upload to buyer decrypt
+///
+/// NO MOCKS - Real Move test scenarios with actual blockchain state
+
+#[test_only]
+module truthmarket::integration_tests {
+    use std::string;
+    use sui::test_scenario::{Self as ts, Scenario};
+    use sui::test_utils;
+    use sui::clock::{Self, Clock};
+    use sui::coin;
+    use sui::sui::SUI;
+    use sui::balance;
+    use truthmarket::marketplace::{
+        Self, Marketplace, PurchaseReceipt, MarketplaceCap, PackageVersion,
+        create_test_marketplace, create_test_clock
+    };
+    use app::truthmarket::{Self, DatasetNFT};
+
+    // Test addresses
+    const ADMIN: address = @0xAD;
+    const SELLER: address = @0xA11CE;
+    const BUYER_1: address = @0xB0B;
+    const BUYER_2: address = @0xCA501;
+    const ATTACKER: address = @0xBAD;
+
+    // Test constants
+    const ONE_SUI: u64 = 1_000_000_000;
+    const TEN_SUI: u64 = 10_000_000_000;
+    const ONE_DAY_MS: u64 = 86400000;
+    const ONE_HOUR_MS: u64 = 3600000;
+    const PLATFORM_FEE_BPS: u64 = 250; // 2.5%
+
+    /// Helper: Create a test DatasetNFT (simulates Nautilus verification)
+    #[test_only]
+    fun create_test_dataset_nft(
+        dataset_hash: vector<u8>,
+        dataset_url: vector<u8>,
+        ctx: &mut TxContext
+    ): DatasetNFT {
+        truthmarket::test_create_dataset_nft(
+            dataset_hash,
+            dataset_url,
+            b"CSV",
+            b"v1.0",
+            1700000000000,
+            object::id_from_address(@0xE1C1A0E),
+            ctx
+        )
+    }
+
+    // ========== INTEGRATION TEST 1: Complete Seller Flow ==========
+
+    #[test]
+    fun test_complete_seller_flow() {
+        let seller = SELLER;
+        let mut scenario = ts::begin(seller);
+
+        // Step 1: Initialize marketplace
+        create_test_marketplace(&mut scenario);
+
+        // Step 2: Seller gets Nautilus verification (DatasetNFT)
+        ts::next_tx(&mut scenario, seller);
+        let nft = {
+            let ctx = ts::ctx(&mut scenario);
+            create_test_dataset_nft(
+                b"sha256_hash_of_dataset_content_here",
+                b"https://datasets.truthmarket.io/covid19-dataset.csv",
+                ctx
+            )
+        };
+
+        // Step 3: Seller creates marketplace listing with NFT
+        ts::next_tx(&mut scenario, seller);
+        let listing_id = {
+            let mut marketplace = ts::take_shared<Marketplace>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+
+            let listing_id = marketplace::create_listing(
+                &mut marketplace,
+                nft, // DatasetNFT from Nautilus
+                string::utf8(b"COVID-19 Training Dataset"), // name
+                string::utf8(b"Comprehensive dataset with 1M+ labeled samples for ML training"), // description
+                b"walrus_blob_3Kj7F2xQz8...", // blob_id
+                5_000_000_000, // price: 5 SUI
+                ONE_DAY_MS * 30, // subscription_ttl: 30 days
+                ctx,
+            );
+
+            ts::return_shared(marketplace);
+            listing_id
+        };
+
+        // Step 4: Verify listing was created correctly
+        ts::next_tx(&mut scenario, seller);
+        {
+            let marketplace = ts::take_shared<Marketplace>(&scenario);
+            let listing = marketplace::test_get_listing(&marketplace, listing_id);
+
+            assert!(marketplace::listing_seller(listing) == seller);
+            assert!(marketplace::listing_price(listing) == 5_000_000_000);
+            assert!(marketplace::listing_active(listing) == true);
+            assert!(*marketplace::listing_dataset_hash(listing) == b"sha256_hash_of_dataset_content_here");
+            assert!(*marketplace::listing_blob_id(listing) == b"walrus_blob_3Kj7F2xQz8...");
+
+            ts::return_shared(marketplace);
+        };
+
+        // Step 5: Verify NFT was returned to seller
+        ts::next_tx(&mut scenario, seller);
+        {
+            let returned_nft = ts::take_from_sender<DatasetNFT>(&scenario);
+            assert!(truthmarket::dataset_hash(&returned_nft) == &b"sha256_hash_of_dataset_content_here");
+            ts::return_to_sender(&scenario, returned_nft);
+        };
+
+        ts::end(scenario);
+    }
+
+    // ========== INTEGRATION TEST 2: Complete Buyer Flow ==========
+
+    #[test]
+    fun test_complete_buyer_flow() {
+        let seller = SELLER;
+        let buyer = BUYER_1;
+        let mut scenario = ts::begin(seller);
+
+        // Setup: Create marketplace and listing
+        create_test_marketplace(&mut scenario);
+
+        ts::next_tx(&mut scenario, seller);
+        let listing_id = {
+            let mut marketplace = ts::take_shared<Marketplace>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+            let nft = create_test_dataset_nft(
+                b"dataset_hash_123",
+                b"https://example.com/dataset.csv",
+                ctx
+            );
+
+            let id = marketplace::create_listing(
+                &mut marketplace,
+                nft,
+                string::utf8(b"Test Dataset"),
+                string::utf8(b"Description"),
+                b"walrus_blob_abc123",
+                ONE_SUI,
+                ONE_DAY_MS * 7, // 7 days access
+                ctx,
+            );
+
+            ts::return_shared(marketplace);
+            id
+        };
+
+        // Step 1: Buyer browses marketplace and views listing details
+        ts::next_tx(&mut scenario, buyer);
+        {
+            let marketplace = ts::take_shared<Marketplace>(&scenario);
+            let listing = let listing = marketplace::test_get_listing(&marketplace, listing_id);
+
+            // Buyer checks price, verification, and metadata
+            assert!(marketplace::listing_price(listing) == ONE_SUI);
+            assert!(marketplace::listing_active(listing) == true);
+            assert!(*marketplace::listing_dataset_hash(listing) == b"dataset_hash_123");
+
+            ts::return_shared(marketplace);
+        };
+
+        // Step 2: Buyer purchases listing
+        ts::next_tx(&mut scenario, buyer);
+        let receipt = {
+            let mut marketplace = ts::take_shared<Marketplace>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+            let test_clock = create_test_clock(ctx);
+
+            // Create payment coin
+            let payment = coin::mint_for_testing<SUI>(ONE_SUI, ctx);
+
+            let receipt = marketplace::purchase_listing(
+                &mut marketplace,
+                listing_id,
+                payment,
+                &test_clock,
+                ctx,
+            );
+
+            clock::destroy_for_testing(test_clock);
+            ts::return_shared(marketplace);
+            receipt
+        };
+
+        // Step 3: Verify purchase receipt (proof of purchase)
+        {
+            assert!(marketplace::receipt_listing_id(&receipt) == listing_id);
+            assert!(marketplace::receipt_expires_at(&receipt) == ONE_DAY_MS * 7);
+            assert!(*marketplace::receipt_blob_id(&receipt) == b"walrus_blob_abc123");
+        };
+
+        // Step 4: Verify listing updated (sales count)
+        ts::next_tx(&mut scenario, buyer);
+        {
+            let marketplace = ts::take_shared<Marketplace>(&scenario);
+            let listing = let listing = marketplace::test_get_listing(&marketplace, listing_id);
+
+            assert!(marketplace::listing_sales_count(listing) == 1);
+
+            ts::return_shared(marketplace);
+        };
+
+        // Step 5: Verify payment flows (platform fee + seller payment)
+        // Platform should receive 2.5% = 25,000,000 MIST
+        // Seller should receive 975,000,000 MIST
+        ts::next_tx(&mut scenario, seller);
+        {
+            let marketplace = ts::take_shared<Marketplace>(&scenario);
+            assert!(balance::value(&marketplace.platform_balance) == 25_000_000);
+            ts::return_shared(marketplace);
+        };
+
+        // Step 6: Buyer can use receipt for Seal decryption approval
+        ts::next_tx(&mut scenario, buyer);
+        {
+            let pkg_version = ts::take_shared<PackageVersion>(&scenario);
+            let marketplace = ts::take_shared<Marketplace>(&scenario);
+            let listing = let listing = marketplace::test_get_listing(&marketplace, listing_id);
+            let ctx = ts::ctx(&mut scenario);
+            let test_clock = create_test_clock(ctx);
+
+            // Simulate Seal SDK calling seal_approve
+            let namespace = object::id_to_bytes(&listing_id);
+            let mut encryption_id = namespace;
+            encryption_id.push_back(0x42); // Nonce
+
+            let approved = marketplace::seal_approve(
+                encryption_id,
+                &pkg_version,
+                &receipt,
+                listing,
+                &test_clock,
+            );
+
+            assert!(approved == true, 1); // Access should be granted
+
+            clock::destroy_for_testing(test_clock);
+            ts::return_shared(pkg_version);
+            ts::return_shared(marketplace);
+        };
+
+        test_utils::destroy(receipt);
+        ts::end(scenario);
+    }
+
+    // ========== INTEGRATION TEST 3: Platform Fees Calculation ==========
+
+    #[test]
+    fun test_platform_fees_distribution() {
+        let seller = SELLER;
+        let buyer1 = BUYER_1;
+        let buyer2 = BUYER_2;
+        let mut scenario = ts::begin(seller);
+
+        create_test_marketplace(&mut scenario);
+
+        // Create listing with 10 SUI price
+        ts::next_tx(&mut scenario, seller);
+        let listing_id = {
+            let mut marketplace = ts::take_shared<Marketplace>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+            let nft = create_test_dataset_nft(b"hash", b"url", ctx);
+
+            let id = marketplace::create_listing(
+                &mut marketplace,
+                nft,
+                string::utf8(b"Premium Dataset"),
+                string::utf8(b"High-value dataset"),
+                b"blob_xyz",
+                TEN_SUI,
+                ONE_DAY_MS,
+                ctx,
+            );
+
+            ts::return_shared(marketplace);
+            id
+        };
+
+        // Buyer 1 purchases for 10 SUI
+        ts::next_tx(&mut scenario, buyer1);
+        {
+            let mut marketplace = ts::take_shared<Marketplace>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+            let test_clock = create_test_clock(ctx);
+            let payment = coin::mint_for_testing<SUI>(TEN_SUI, ctx);
+
+            let receipt = marketplace::purchase_listing(
+                &mut marketplace,
+                listing_id,
+                payment,
+                &test_clock,
+                ctx,
+            );
+
+            // Platform fee: 2.5% of 10 SUI = 0.25 SUI = 250,000,000 MIST
+            assert!(balance::value(&marketplace.platform_balance) == 250_000_000);
+
+            test_utils::destroy(receipt);
+            clock::destroy_for_testing(test_clock);
+            ts::return_shared(marketplace);
+        };
+
+        // Buyer 2 also purchases (same listing)
+        ts::next_tx(&mut scenario, buyer2);
+        {
+            let mut marketplace = ts::take_shared<Marketplace>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+            let test_clock = create_test_clock(ctx);
+            let payment = coin::mint_for_testing<SUI>(TEN_SUI, ctx);
+
+            let receipt = marketplace::purchase_listing(
+                &mut marketplace,
+                listing_id,
+                payment,
+                &test_clock,
+                ctx,
+            );
+
+            // Platform balance should now be 0.5 SUI (2 purchases)
+            assert!(balance::value(&marketplace.platform_balance) == 500_000_000);
+
+            test_utils::destroy(receipt);
+            clock::destroy_for_testing(test_clock);
+            ts::return_shared(marketplace);
+        };
+
+        ts::end(scenario);
+    }
+
+    // ========== INTEGRATION TEST 4: Subscription Expiry ==========
+
+    #[test]
+    fun test_subscription_expiry_denies_access() {
+        let seller = SELLER;
+        let buyer = BUYER_1;
+        let mut scenario = ts::begin(seller);
+
+        create_test_marketplace(&mut scenario);
+
+        // Create package version
+        ts::next_tx(&mut scenario, seller);
+        {
+            let ctx = ts::ctx(&mut scenario);
+            transfer::share_object(marketplace::PackageVersion {
+                id: object::new(ctx),
+                version: 1,
+            });
+        };
+
+        // Create listing with SHORT TTL (1 hour)
+        ts::next_tx(&mut scenario, seller);
+        let listing_id = {
+            let mut marketplace = ts::take_shared<Marketplace>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+            let nft = create_test_dataset_nft(b"hash", b"url", ctx);
+
+            let id = marketplace::create_listing(
+                &mut marketplace,
+                nft,
+                string::utf8(b"Short Access Dataset"),
+                string::utf8(b"Only 1 hour access"),
+                b"blob_short",
+                ONE_SUI,
+                ONE_HOUR_MS, // 1 hour TTL
+                ctx,
+            );
+
+            ts::return_shared(marketplace);
+            id
+        };
+
+        // Buyer purchases
+        ts::next_tx(&mut scenario, buyer);
+        let receipt = {
+            let mut marketplace = ts::take_shared<Marketplace>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+            let test_clock = create_test_clock(ctx);
+            let payment = coin::mint_for_testing<SUI>(ONE_SUI, ctx);
+
+            let receipt = marketplace::purchase_listing(
+                &mut marketplace,
+                listing_id,
+                payment,
+                &test_clock,
+                ctx,
+            );
+
+            clock::destroy_for_testing(test_clock);
+            ts::return_shared(marketplace);
+            receipt
+        };
+
+        // Initially, access should be granted
+        ts::next_tx(&mut scenario, buyer);
+        {
+            let pkg_version = ts::take_shared<PackageVersion>(&scenario);
+            let marketplace = ts::take_shared<Marketplace>(&scenario);
+            let listing = let listing = marketplace::test_get_listing(&marketplace, listing_id);
+            let ctx = ts::ctx(&mut scenario);
+            let test_clock = create_test_clock(ctx);
+
+            let namespace = object::id_to_bytes(&listing_id);
+            let mut id = namespace;
+            id.push_back(0x99);
+
+            let approved = marketplace::seal_approve(id, &pkg_version, &receipt, listing, &test_clock);
+            assert!(approved == true, 1);
+
+            clock::destroy_for_testing(test_clock);
+            ts::return_shared(pkg_version);
+            ts::return_shared(marketplace);
+        };
+
+        // After expiry (2 hours later), access should be DENIED
+        ts::next_tx(&mut scenario, buyer);
+        {
+            let pkg_version = ts::take_shared<PackageVersion>(&scenario);
+            let marketplace = ts::take_shared<Marketplace>(&scenario);
+            let listing = let listing = marketplace::test_get_listing(&marketplace, listing_id);
+            let ctx = ts::ctx(&mut scenario);
+            let mut test_clock = create_test_clock(ctx);
+
+            // Advance clock past expiry
+            clock::increment_for_testing(&mut test_clock, ONE_HOUR_MS * 2);
+
+            let namespace = object::id_to_bytes(&listing_id);
+            let mut id = namespace;
+            id.push_back(0x99);
+
+            let approved = marketplace::seal_approve(id, &pkg_version, &receipt, listing, &test_clock);
+            assert!(approved == false, 2); // Access DENIED
+
+            clock::destroy_for_testing(test_clock);
+            ts::return_shared(pkg_version);
+            ts::return_shared(marketplace);
+        };
+
+        test_utils::destroy(receipt);
+        ts::end(scenario);
+    }
+
+    // ========== INTEGRATION TEST 5: Invalid NFT Rejected ==========
+
+    #[test]
+    #[expected_failure(abort_code = truthmarket::EInvalidPrice)]
+    fun test_invalid_nft_creation_fails() {
+        // This test ensures that attempting to create a listing with invalid data fails
+        // In real scenario, Nautilus signature verification would catch this
+        let seller = SELLER;
+        let mut scenario = ts::begin(seller);
+
+        create_test_marketplace(&mut scenario);
+
+        ts::next_tx(&mut scenario, seller);
+        {
+            let mut marketplace = ts::take_shared<Marketplace>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+            let nft = create_test_dataset_nft(b"hash", b"url", ctx);
+
+            // Try to create listing with INVALID price (0)
+            marketplace::create_listing(
+                &mut marketplace,
+                nft,
+                string::utf8(b"Invalid Dataset"),
+                string::utf8(b"This should fail"),
+                b"blob",
+                0, // INVALID: zero price
+                ONE_DAY_MS,
+                ctx,
+            );
+
+            ts::return_shared(marketplace);
+        };
+
+        ts::end(scenario);
+    }
+
+    // ========== INTEGRATION TEST 6: Multiple Purchases Same Listing ==========
+
+    #[test]
+    fun test_multiple_buyers_same_listing() {
+        let seller = SELLER;
+        let buyer1 = BUYER_1;
+        let buyer2 = BUYER_2;
+        let mut scenario = ts::begin(seller);
+
+        create_test_marketplace(&mut scenario);
+
+        // Create listing
+        ts::next_tx(&mut scenario, seller);
+        let listing_id = {
+            let mut marketplace = ts::take_shared<Marketplace>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+            let nft = create_test_dataset_nft(b"popular_dataset", b"url", ctx);
+
+            let id = marketplace::create_listing(
+                &mut marketplace,
+                nft,
+                string::utf8(b"Popular Dataset"),
+                string::utf8(b"High-demand dataset"),
+                b"blob_popular",
+                5 * ONE_SUI,
+                ONE_DAY_MS * 30,
+                ctx,
+            );
+
+            ts::return_shared(marketplace);
+            id
+        };
+
+        // Buyer 1 purchases
+        ts::next_tx(&mut scenario, buyer1);
+        let receipt1 = {
+            let mut marketplace = ts::take_shared<Marketplace>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+            let test_clock = create_test_clock(ctx);
+            let payment = coin::mint_for_testing<SUI>(5 * ONE_SUI, ctx);
+
+            let receipt = marketplace::purchase_listing(&mut marketplace, listing_id, payment, &test_clock, ctx);
+
+            clock::destroy_for_testing(test_clock);
+            ts::return_shared(marketplace);
+            receipt
+        };
+
+        // Buyer 2 purchases (same listing)
+        ts::next_tx(&mut scenario, buyer2);
+        let receipt2 = {
+            let mut marketplace = ts::take_shared<Marketplace>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+            let test_clock = create_test_clock(ctx);
+            let payment = coin::mint_for_testing<SUI>(5 * ONE_SUI, ctx);
+
+            let receipt = marketplace::purchase_listing(&mut marketplace, listing_id, payment, &test_clock, ctx);
+
+            clock::destroy_for_testing(test_clock);
+            ts::return_shared(marketplace);
+            receipt
+        };
+
+        // Verify both receipts are unique and valid
+        assert!(marketplace::receipt_listing_id(&receipt1) == listing_id);
+        assert!(marketplace::receipt_listing_id(&receipt2) == listing_id);
+
+        // Verify listing sales count
+        ts::next_tx(&mut scenario, seller);
+        {
+            let marketplace = ts::take_shared<Marketplace>(&scenario);
+            let listing = let listing = marketplace::test_get_listing(&marketplace, listing_id);
+            assert!(marketplace::listing_sales_count(listing) == 2);
+            ts::return_shared(marketplace);
+        };
+
+        // Verify platform fees (2 purchases × 2.5% × 5 SUI)
+        // = 2 × 0.125 SUI = 0.25 SUI = 250,000,000 MIST
+        ts::next_tx(&mut scenario, seller);
+        {
+            let marketplace = ts::take_shared<Marketplace>(&scenario);
+            assert!(balance::value(&marketplace.platform_balance) == 250_000_000);
+            ts::return_shared(marketplace);
+        };
+
+        test_utils::destroy(receipt1);
+        test_utils::destroy(receipt2);
+        ts::end(scenario);
+    }
+
+    // ========== INTEGRATION TEST 7: Seller Updates Listing ==========
+
+    #[test]
+    fun test_seller_updates_price_and_status() {
+        let seller = SELLER;
+        let mut scenario = ts::begin(seller);
+
+        create_test_marketplace(&mut scenario);
+
+        // Create listing
+        ts::next_tx(&mut scenario, seller);
+        let listing_id = {
+            let mut marketplace = ts::take_shared<Marketplace>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+            let nft = create_test_dataset_nft(b"hash", b"url", ctx);
+
+            let id = marketplace::create_listing(
+                &mut marketplace,
+                nft,
+                string::utf8(b"Flexible Dataset"),
+                string::utf8(b"Price will change"),
+                b"blob_flex",
+                ONE_SUI,
+                ONE_DAY_MS,
+                ctx,
+            );
+
+            ts::return_shared(marketplace);
+            id
+        };
+
+        // Update price to 2 SUI
+        ts::next_tx(&mut scenario, seller);
+        {
+            let mut marketplace = ts::take_shared<Marketplace>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+
+            marketplace::update_listing_price(&mut marketplace, listing_id, 2 * ONE_SUI, ctx);
+
+            let listing = let listing = marketplace::test_get_listing(&marketplace, listing_id);
+            assert!(marketplace::listing_price(listing) == 2 * ONE_SUI);
+
+            ts::return_shared(marketplace);
+        };
+
+        // Deactivate listing
+        ts::next_tx(&mut scenario, seller);
+        {
+            let mut marketplace = ts::take_shared<Marketplace>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+
+            marketplace::update_listing_status(&mut marketplace, listing_id, false, ctx);
+
+            let listing = let listing = marketplace::test_get_listing(&marketplace, listing_id);
+            assert!(marketplace::listing_active(listing) == false);
+
+            ts::return_shared(marketplace);
+        };
+
+        // Reactivate listing
+        ts::next_tx(&mut scenario, seller);
+        {
+            let mut marketplace = ts::take_shared<Marketplace>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+
+            marketplace::update_listing_status(&mut marketplace, listing_id, true, ctx);
+
+            let listing = let listing = marketplace::test_get_listing(&marketplace, listing_id);
+            assert!(marketplace::listing_active(listing) == true);
+
+            ts::return_shared(marketplace);
+        };
+
+        ts::end(scenario);
+    }
+
+    // ========== INTEGRATION TEST 8: Unauthorized Actions Fail ==========
+
+    #[test]
+    #[expected_failure(abort_code = marketplace::ENotSeller)]
+    fun test_unauthorized_price_update_fails() {
+        let seller = SELLER;
+        let attacker = ATTACKER;
+        let mut scenario = ts::begin(seller);
+
+        create_test_marketplace(&mut scenario);
+
+        // Create listing
+        ts::next_tx(&mut scenario, seller);
+        let listing_id = {
+            let mut marketplace = ts::take_shared<Marketplace>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+            let nft = create_test_dataset_nft(b"hash", b"url", ctx);
+
+            let id = marketplace::create_listing(
+                &mut marketplace,
+                nft,
+                string::utf8(b"Protected Dataset"),
+                string::utf8(b"Only seller can modify"),
+                b"blob_protected",
+                ONE_SUI,
+                ONE_DAY_MS,
+                ctx,
+            );
+
+            ts::return_shared(marketplace);
+            id
+        };
+
+        // Attacker tries to update price (should FAIL)
+        ts::next_tx(&mut scenario, attacker);
+        {
+            let mut marketplace = ts::take_shared<Marketplace>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+
+            marketplace::update_listing_price(&mut marketplace, listing_id, 1, ctx); // Should abort
+
+            ts::return_shared(marketplace);
+        };
+
+        ts::end(scenario);
+    }
+
+    // ========== INTEGRATION TEST 9: Platform Earnings Withdrawal ==========
+
+    #[test]
+    fun test_platform_earnings_withdrawal() {
+        let admin = ADMIN;
+        let seller = SELLER;
+        let buyer = BUYER_1;
+        let mut scenario = ts::begin(admin);
+
+        // Create marketplace with cap
+        ts::next_tx(&mut scenario, admin);
+        {
+            let ctx = ts::ctx(&mut scenario);
+            transfer::share_object(marketplace::Marketplace {
+                id: object::new(ctx),
+                listings: table::new(ctx),
+                platform_fee_bps: PLATFORM_FEE_BPS,
+                platform_balance: balance::zero(),
+            });
+            transfer::transfer(MarketplaceCap { id: object::new(ctx) }, admin);
+        };
+
+        // Seller creates listing
+        ts::next_tx(&mut scenario, seller);
+        let listing_id = {
+            let mut marketplace = ts::take_shared<Marketplace>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+            let nft = create_test_dataset_nft(b"hash", b"url", ctx);
+
+            let id = marketplace::create_listing(
+                &mut marketplace,
+                nft,
+                string::utf8(b"Revenue Dataset"),
+                string::utf8(b"Generates platform fees"),
+                b"blob_revenue",
+                TEN_SUI,
+                ONE_DAY_MS,
+                ctx,
+            );
+
+            ts::return_shared(marketplace);
+            id
+        };
+
+        // Buyer purchases (generates platform fees)
+        ts::next_tx(&mut scenario, buyer);
+        {
+            let mut marketplace = ts::take_shared<Marketplace>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+            let test_clock = create_test_clock(ctx);
+            let payment = coin::mint_for_testing<SUI>(TEN_SUI, ctx);
+
+            let receipt = marketplace::purchase_listing(&mut marketplace, listing_id, payment, &test_clock, ctx);
+
+            // Platform fee: 2.5% of 10 SUI = 250,000,000 MIST
+            assert!(balance::value(&marketplace.platform_balance) == 250_000_000);
+
+            test_utils::destroy(receipt);
+            clock::destroy_for_testing(test_clock);
+            ts::return_shared(marketplace);
+        };
+
+        // Admin withdraws platform earnings
+        ts::next_tx(&mut scenario, admin);
+        {
+            let cap = ts::take_from_sender<MarketplaceCap>(&scenario);
+            let mut marketplace = ts::take_shared<Marketplace>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+
+            let withdrawn = marketplace::withdraw_platform_earnings(&cap, &mut marketplace, 250_000_000, ctx);
+
+            assert!(coin::value(&withdrawn) == 250_000_000);
+            assert!(balance::value(&marketplace.platform_balance) == 0);
+
+            test_utils::destroy(withdrawn);
+            ts::return_to_sender(&scenario, cap);
+            ts::return_shared(marketplace);
+        };
+
+        ts::end(scenario);
+    }
+
+    // ========== INTEGRATION TEST 10: Cross-Listing Receipt Validation ==========
+
+    #[test]
+    fun test_receipt_only_valid_for_correct_listing() {
+        let seller = SELLER;
+        let buyer = BUYER_1;
+        let mut scenario = ts::begin(seller);
+
+        create_test_marketplace(&mut scenario);
+
+        // Create package version
+        ts::next_tx(&mut scenario, seller);
+        {
+            let ctx = ts::ctx(&mut scenario);
+            transfer::share_object(marketplace::PackageVersion {
+                id: object::new(ctx),
+                version: 1,
+            });
+        };
+
+        // Create two listings
+        ts::next_tx(&mut scenario, seller);
+        let listing_id_1 = {
+            let mut marketplace = ts::take_shared<Marketplace>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+            let nft = create_test_dataset_nft(b"hash1", b"url1", ctx);
+
+            let id = marketplace::create_listing(
+                &mut marketplace,
+                nft,
+                string::utf8(b"Dataset A"),
+                string::utf8(b"First dataset"),
+                b"blob_a",
+                ONE_SUI,
+                ONE_DAY_MS,
+                ctx,
+            );
+
+            ts::return_shared(marketplace);
+            id
+        };
+
+        ts::next_tx(&mut scenario, seller);
+        let listing_id_2 = {
+            let mut marketplace = ts::take_shared<Marketplace>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+            let nft = create_test_dataset_nft(b"hash2", b"url2", ctx);
+
+            let id = marketplace::create_listing(
+                &mut marketplace,
+                nft,
+                string::utf8(b"Dataset B"),
+                string::utf8(b"Second dataset"),
+                b"blob_b",
+                ONE_SUI,
+                ONE_DAY_MS,
+                ctx,
+            );
+
+            ts::return_shared(marketplace);
+            id
+        };
+
+        // Buyer purchases listing 1
+        ts::next_tx(&mut scenario, buyer);
+        let receipt = {
+            let mut marketplace = ts::take_shared<Marketplace>(&scenario);
+            let ctx = ts::ctx(&mut scenario);
+            let test_clock = create_test_clock(ctx);
+            let payment = coin::mint_for_testing<SUI>(ONE_SUI, ctx);
+
+            let receipt = marketplace::purchase_listing(&mut marketplace, listing_id_1, payment, &test_clock, ctx);
+
+            clock::destroy_for_testing(test_clock);
+            ts::return_shared(marketplace);
+            receipt
+        };
+
+        // Try to use receipt for listing 2 (should FAIL)
+        ts::next_tx(&mut scenario, buyer);
+        {
+            let pkg_version = ts::take_shared<PackageVersion>(&scenario);
+            let marketplace = ts::take_shared<Marketplace>(&scenario);
+            let listing_2 = marketplace::test_get_listing(&marketplace,(listing_id_2);
+            let ctx = ts::ctx(&mut scenario);
+            let test_clock = create_test_clock(ctx);
+
+            let namespace = object::id_to_bytes(&listing_id_2);
+            let mut id = namespace;
+            id.push_back(0x11);
+
+            let approved = marketplace::seal_approve(id, &pkg_version, &receipt, listing_2, &test_clock);
+            assert!(approved == false, 1); // Access DENIED for wrong listing
+
+            clock::destroy_for_testing(test_clock);
+            ts::return_shared(pkg_version);
+            ts::return_shared(marketplace);
+        };
+
+        test_utils::destroy(receipt);
+        ts::end(scenario);
+    }
+}

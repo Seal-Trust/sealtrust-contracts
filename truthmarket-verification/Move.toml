@@ -1,0 +1,11 @@
+[package]
+name = "truthmarket-verification"
+edition = "2024.beta"
+
+[dependencies]
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "b448b1d971bd6c1aac8ef4eee4305943806d5d5b" }
+enclave = { local = "../../repo/nautilus/move/enclave" }
+
+[addresses]
+app = "0x0"
+enclave = "0x0"

@@ -4,8 +4,8 @@ edition = "2024.beta"
 
 [dependencies]
 Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "b448b1d971bd6c1aac8ef4eee4305943806d5d5b" }
-enclave = { local = "../../repo/nautilus/move/enclave" }
+enclave = { local = "../enclave" }
 
 [addresses]
 app = "0x0"
-enclave = "0x0"
+enclave = "0x0ff344b5b6f07b79b56a4ce1e9b1ef5a96ba219f6e6f2c49f194dee29dfc8b7f"

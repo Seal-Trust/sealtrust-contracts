@@ -4,7 +4,6 @@
 module app::truthmarket;
 
 use std::string::{Self, String};
-use std::option::{Self, Option};
 use sui::address;
 use enclave::enclave::{Self, Enclave};
 

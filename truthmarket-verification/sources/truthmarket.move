@@ -4,6 +4,7 @@
 module app::truthmarket;
 
 use std::string::{Self, String};
+use std::option::{Self, Option};
 use sui::address;
 use enclave::enclave::{Self, Enclave};
 
@@ -20,7 +21,7 @@ public struct DatasetNFT has key, store {
     // Storage references
     walrus_blob_id: String,           // Where encrypted blob is stored
     seal_policy_id: String,           // Access control policy ID
-    seal_allowlist_id: ID,            // Allowlist object ID for access control
+    seal_allowlist_id: Option<ID>,   // Optional: Allowlist object ID for access control
 
     // Metadata
     name: String,                     // Dataset name
@@ -85,7 +86,7 @@ public fun register_dataset<T>(
     // Storage references
     walrus_blob_id: String,         // Where encrypted blob is stored
     seal_policy_id: String,         // Seal access control policy
-    seal_allowlist_id: ID,          // Allowlist object ID for access control
+    seal_allowlist_id: Option<ID>,  // Optional: Allowlist object ID for access control
     // Attestation
     timestamp_ms: u64,
     tee_signature: &vector<u8>,
@@ -156,7 +157,7 @@ public fun register_dataset_dev<T>(
     // Storage references
     walrus_blob_id: String,
     seal_policy_id: String,
-    seal_allowlist_id: ID,
+    seal_allowlist_id: Option<ID>,  // Optional: Allowlist object ID for access control
     // Attestation
     timestamp_ms: u64,
     tee_signature: &vector<u8>,
@@ -206,7 +207,7 @@ public fun seal_policy_id(nft: &DatasetNFT): &String {
     &nft.seal_policy_id
 }
 
-public fun seal_allowlist_id(nft: &DatasetNFT): ID {
+public fun seal_allowlist_id(nft: &DatasetNFT): Option<ID> {
     nft.seal_allowlist_id
 }
 
@@ -295,7 +296,7 @@ fun test_dataset_nft_creation() {
             metadata_hash: b"metadata_hash",
             walrus_blob_id: string::utf8(b"blob-123"),
             seal_policy_id: string::utf8(b"policy-123"),
-            seal_allowlist_id: object::id_from_address(@0xA110111),
+            seal_allowlist_id: option::some(object::id_from_address(@0xA110111)),
             name: string::utf8(b"test.csv"),
             dataset_url: string::utf8(b"https://example.com/data.csv"),
             format: string::utf8(b"CSV"),
@@ -337,7 +338,7 @@ public fun test_create_dataset_nft(
     metadata_hash: vector<u8>,
     walrus_blob_id: String,
     seal_policy_id: String,
-    seal_allowlist_id: ID,
+    seal_allowlist_id: Option<ID>,
     name: vector<u8>,
     format: vector<u8>,
     size: u64,

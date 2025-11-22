@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // SealTrust Dataset Verification Contract
-// Module name kept as 'truthmarket' for backward compatibility with deployed contracts
 
-module app::truthmarket;
+module app::sealtrust;
 
 use std::string::{Self, String};
 use sui::address;
@@ -56,9 +55,9 @@ public struct DatasetVerification has copy, drop {
 }
 
 /// Witness for one-time init
-public struct TRUTHMARKET has drop {}
+public struct SEALTRUST has drop {}
 
-fun init(otw: TRUTHMARKET, ctx: &mut TxContext) {
+fun init(otw: SEALTRUST, ctx: &mut TxContext) {
     let cap = enclave::new_cap(otw, ctx);
 
     // Create enclave config with zero PCRs (will update with real values later)

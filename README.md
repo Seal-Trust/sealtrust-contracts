@@ -129,13 +129,14 @@ sui client publish --gas-budget 100000000
 
 ---
 
-## Deployed Addresses (Testnet)
+## Deployed Addresses (Testnet - 2025-11-22)
 
 | Object | Address | Explorer |
 |--------|---------|----------|
 | Verification Package | `0xcdc25c90e328f2905c97c01e90424395dd7b10e67769fc8f4ae62b87f1e63e4e` | [View](https://testnet.suivision.xyz/package/0xcdc25c90e328f2905c97c01e90424395dd7b10e67769fc8f4ae62b87f1e63e4e) |
 | Allowlist Package | `0x705937d7b0ffc7c37aa23a445ed52ae521a47adcdffa27fe965e0b73464a9925` | [View](https://testnet.suivision.xyz/package/0x705937d7b0ffc7c37aa23a445ed52ae521a47adcdffa27fe965e0b73464a9925) |
 | EnclaveConfig | `0x55d6a15a5e8822b39f76dc53031d83beddc1e5b0e3ef804b82e8d4bfe4fbdc32` | [View](https://testnet.suivision.xyz/object/0x55d6a15a5e8822b39f76dc53031d83beddc1e5b0e3ef804b82e8d4bfe4fbdc32) |
+| Enclave | `0x611b83f2b4d97471a6c164877ff23a2f0570806baf3d9380d1f11433a2b685ec` | [View](https://testnet.suivision.xyz/object/0x611b83f2b4d97471a6c164877ff23a2f0570806baf3d9380d1f11433a2b685ec) |
 
 ---
 

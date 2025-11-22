@@ -38,9 +38,9 @@
 ### Enclave (Shared) - Registered with AWS Nitro
 | Property | Value |
 |----------|-------|
-| **Object ID** | `PENDING - Will be updated after registration` |
+| **Object ID** | `0x611b83f2b4d97471a6c164877ff23a2f0570806baf3d9380d1f11433a2b685ec` |
 | **Type** | `Enclave<sealtrust::SEALTRUST>` |
-| **Sui Explorer** | PENDING |
+| **Sui Explorer** | [View on SuiVision](https://testnet.suivision.xyz/object/0x611b83f2b4d97471a6c164877ff23a2f0570806baf3d9380d1f11433a2b685ec) |
 
 ---
 
@@ -68,7 +68,7 @@ PCR2: 21b9efbc184807662e966d34f390821309eeac6802309798826296bf3e8bec7c10edb30948
 |--------|-------------------|------|
 | Publish SealTrust Package | `CLPTKZW9Kxf2JXWkQxfU8b9FQXVwNAkvioWm5d6knoVb` | 2025-11-22 |
 | Update PCRs | `6xDy1W8M4SRocEpDvch8tNRMfLR6Qq1UR8VWEX5Rjhu5` | 2025-11-22 |
-| Register Enclave | PENDING | 2025-11-22 |
+| Register Enclave | `AHKzdwZgrvMEkRq838afr7KVEHKxtpN1fw1oUhQRPiJf` | 2025-11-22 |
 
 ---
 
@@ -143,7 +143,7 @@ export const CONFIG = {
 
   // Objects
   ENCLAVE_CONFIG_ID: '0x55d6a15a5e8822b39f76dc53031d83beddc1e5b0e3ef804b82e8d4bfe4fbdc32',
-  ENCLAVE_ID: 'PENDING', // Update after registration
+  ENCLAVE_ID: '0x611b83f2b4d97471a6c164877ff23a2f0570806baf3d9380d1f11433a2b685ec',
 
   // Nautilus
   NAUTILUS_URL: 'http://13.217.44.235:3000',

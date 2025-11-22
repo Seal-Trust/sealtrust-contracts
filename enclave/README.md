@@ -1,8 +1,18 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Seal-Trust/seal-media/main/logo.svg" alt="SealTrust Logo" width="80"/>
+</p>
+
 # Enclave Configuration Contract
 
 Nautilus package for managing TEE enclave configuration on Sui.
 
-Built on Sui | Walrus | Seal | Nautilus TEE
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Seal-Trust/seal-media/main/sui-logo.svg" alt="Sui" height="24"/>
+  &nbsp;&nbsp;
+  <img src="https://raw.githubusercontent.com/Seal-Trust/seal-media/main/walrus-logo.svg" alt="Walrus" height="24"/>
+  &nbsp;&nbsp;
+  <img src="https://raw.githubusercontent.com/Seal-Trust/seal-media/main/seal-logo.svg" alt="Seal" height="24"/>
+</p>
 
 ---
 

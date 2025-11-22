@@ -77,7 +77,7 @@ PCR2: 21b9efbc184807662e966d34f390821309eeac6802309798826296bf3e8bec7c10edb30948
 ### Nautilus Enclave (Production)
 | Property | Value |
 |----------|-------|
-| **Public URL** | `http://13.217.44.235:3000` |
+| **Public URL** | `https://nautilus.sealtrust.app` |
 | **Instance Type** | `m5a.xlarge` |
 | **Region** | `ap-northeast-1` |
 | **Enclave CID** | `22` |
@@ -95,10 +95,10 @@ PCR2: 21b9efbc184807662e966d34f390821309eeac6802309798826296bf3e8bec7c10edb30948
 ### Test the Enclave
 ```bash
 # Health check
-curl http://13.217.44.235:3000/health
+curl https://nautilus.sealtrust.app/health
 
 # Get attestation (returns PCRs + public key)
-curl http://13.217.44.235:3000/get_attestation
+curl https://nautilus.sealtrust.app/get_attestation
 ```
 
 ---
@@ -117,13 +117,13 @@ sui client object 0x55d6a15a5e8822b39f76dc53031d83beddc1e5b0e3ef804b82e8d4bfe4fb
 
 ### 3. Verify Enclave is Running
 ```bash
-curl http://13.217.44.235:3000/health
+curl https://nautilus.sealtrust.app/health
 # Returns: "OK"
 ```
 
 ### 4. Verify PCR Values Match
 ```bash
-curl http://13.217.44.235:3000/get_attestation | jq '.pcrs'
+curl https://nautilus.sealtrust.app/get_attestation | jq '.pcrs'
 # Should match the PCR values above
 ```
 
@@ -145,8 +145,8 @@ export const CONFIG = {
   ENCLAVE_CONFIG_ID: '0x55d6a15a5e8822b39f76dc53031d83beddc1e5b0e3ef804b82e8d4bfe4fbdc32',
   ENCLAVE_ID: '0x611b83f2b4d97471a6c164877ff23a2f0570806baf3d9380d1f11433a2b685ec',
 
-  // Nautilus
-  NAUTILUS_URL: 'http://13.217.44.235:3000',
+  // Nautilus (via Cloudflare Tunnel)
+  NAUTILUS_URL: 'https://nautilus.sealtrust.app',
 };
 ```
 

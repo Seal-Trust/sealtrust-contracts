@@ -1,5 +1,5 @@
 [package]
-name = "truthmarket-verification"
+name = "sealtrust-verification"
 edition = "2024.beta"
 
 [dependencies]

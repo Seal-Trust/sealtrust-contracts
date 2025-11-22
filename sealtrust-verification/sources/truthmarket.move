@@ -1,5 +1,8 @@
-// Copyright (c), Mysten Labs, Inc.
+// Copyright (c) SealTrust
 // SPDX-License-Identifier: Apache-2.0
+//
+// SealTrust Dataset Verification Contract
+// Module name kept as 'truthmarket' for backward compatibility with deployed contracts
 
 module app::truthmarket;
 
@@ -60,7 +63,7 @@ fun init(otw: TRUTHMARKET, ctx: &mut TxContext) {
 
     // Create enclave config with zero PCRs (will update with real values later)
     cap.create_enclave_config(
-        std::string::utf8(b"truthmarket dataset enclave"),
+        std::string::utf8(b"sealtrust dataset enclave"),
         x"000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
         x"000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
         x"000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",

@@ -1,8 +1,8 @@
-// Copyright (c), Mysten Labs, Inc.
+// Copyright (c) SealTrust
 // SPDX-License-Identifier: Apache-2.0
 
 // Based on the allowlist pattern from Seal examples
-// Used for access control in TruthMarket encrypted datasets
+// Used for access control in SealTrust encrypted datasets
 
 module walrus::allowlist;
 

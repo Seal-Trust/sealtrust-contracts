@@ -1,8 +1,8 @@
-# TruthMarket Smart Contracts
+# SealTrust Smart Contracts
 
 **Move contracts for dataset verification on Sui blockchain**
 
-This folder contains all the smart contracts (written in Move language) that power TruthMarket.
+This folder contains all the smart contracts (written in Move language) that power SealTrust.
 
 ---
 
@@ -14,7 +14,7 @@ Think of smart contracts as rules that run on the blockchain. Once deployed, nob
 
 ## Our Contracts
 
-### 1. **truthmarket-verification/** - Main Contract
+### 1. **sealtrust-verification/** - Main Contract
 
 **What it does:** Records dataset registrations on the blockchain
 
@@ -157,7 +157,7 @@ Save this as `SEAL_ALLOWLIST_PACKAGE_ID`
 **2. Deploy Verification Contract**
 
 ```bash
-cd ../truthmarket-verification
+cd ../sealtrust-verification
 
 # Build
 sui move build
@@ -173,7 +173,7 @@ Also note the `EnclaveConfig` object ID - you'll need this too!
 **3. Update Frontend Config**
 
 ```bash
-cd ../../truthmarket-frontend-v3
+cd ../../sealtrust-frontend
 
 # Edit .env.local
 nano .env.local
@@ -252,7 +252,7 @@ console.log(nft.content.fields);
 // Find dataset by its hash
 const objects = await suiClient.queryObjects({
   filter: {
-    StructType: `${VERIFICATION_PACKAGE}::truthmarket::DatasetNFT`
+    StructType: `${VERIFICATION_PACKAGE}::sealtrust::DatasetNFT`
   }
 });
 
@@ -320,7 +320,7 @@ sui move test
 2. **How to upgrade:**
 
 ```bash
-cd truthmarket-verification
+cd sealtrust-verification
 
 # Build new version
 sui move build
@@ -420,12 +420,12 @@ sui client call \
 
 ```
 move/
-├── truthmarket-verification/
+├── sealtrust-verification/
 │   ├── Move.toml              # Package config
 │   ├── sources/
-│   │   └── truthmarket.move   # Main contract
+│   │   └── sealtrust.move     # Main contract
 │   └── tests/
-│       └── truthmarket_tests.move
+│       └── sealtrust_tests.move
 │
 ├── seal-allowlist/
 │   ├── Move.toml
@@ -456,7 +456,7 @@ move/
 
 - Check main README: `../README.md`
 - Review test files for examples
-- See frontend integration: `../truthmarket-frontend-v3/src/lib/`
+- See frontend integration: `../sealtrust-frontend/src/lib/`
 
 ---
 

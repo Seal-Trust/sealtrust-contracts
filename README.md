@@ -183,5 +183,18 @@ move/
 ├── enclave/
 │   ├── sources/enclave.move      # Nautilus config
 │   └── Move.toml
+├── DEPLOYMENT.md                 # Full deployment details
 └── README.md
 ```
+
+---
+
+## Deployment
+
+For full deployment details including:
+- AWS Nitro Enclave configuration
+- PCR measurements
+- Transaction history
+- API endpoints
+
+👉 **See [DEPLOYMENT.md](./DEPLOYMENT.md)**
